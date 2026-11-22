@@ -2,6 +2,7 @@
 #include <libtwl/sound/soundChannel.h>
 #include "soundIpcCommand.h"
 #include "SoundIpcService.h"
+#include <libtwl/ipc/ipcFifoSystem.h>
 
 void SoundIpcService::OnMessageReceived(u32 data)
 {
@@ -34,6 +35,15 @@ void SoundIpcService::OnMessageReceived(u32 data)
                 }
                 break;
             }
+            case SND_IPC_CMD_ACKNOWLEDGE:
+            {
+                // Keep the FIFO IRQ bounded: never spin waiting for reply space.
+                // If the reply cannot be queued, ARM9 must time out safely
+                // without releasing possibly-live command/sample storage.
+                if (cmdArg != 0 && i + 1 == cmdCount)
+                    ipc_trySendFifoMessage(IPC_CHANNEL_SOUND, cmdArg);
+                break;
+            }
             case SND_IPC_CMD_SETUP_CHANNEL:
             {
                 u32 channel = cmdArg;
@@ -47,3 +57,4 @@ void SoundIpcService::OnMessageReceived(u32 data)
         }
     }
 }
+
