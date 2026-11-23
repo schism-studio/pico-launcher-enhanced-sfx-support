@@ -1,78 +1,53 @@
-# Theme SFX and per-game launch audio
+# SFX implementation and integration
 
-Status: placeholders only. No audio feature is implemented or tested.
+This guide supersedes the original placeholder-only plan. For installation, filenames, asset formats, discovery rules, selection, and fallback order, see [Sound banks and SFX Options](SoundBanks.md).
 
-## Scope
+## Version and validation boundary
 
-- Bundle UI sounds inside the active theme; no separate pack selector or settings schema change.
-- Store per-game launch overrides beside ROMs, outside themes.
-- Plan for mono 22050 Hz PCM16 and DS-compatible IMA-ADPCM, with ADPCM preferred after validation.
-- Keep playback within the launcher; stop before game handoff.
+The customized Default-bank resolver and theme-style selector were inspected in the local export `pico-sfx-options-final-source-20261122-212833-d0308f.txt`. A separate final selector patch adds the SFX off card, removes the lower-left toggle, and adds the SFX Options heading. Those final UI changes are documented as the target behavior; applying that patch, building it with the target toolchain, and testing it on DS hardware must be verified separately. A documentation commit does not upload the local implementation or certify the branch build.
 
-## Planned assets
+The final UI patch reported 24 mocked selection/save/return/recycling checks and 10 sanitizer-backed artwork checks. These are host checks, not ARM9/ARM7 hardware validation.
 
-```text
-/_pico/themes/<theme>/sfx/
-  move.adpcm       # or move.pcm16
-  confirm.adpcm    # or confirm.pcm16
-  back.adpcm       # or back.pcm16
-  launch.adpcm     # or launch.pcm16
-  # Optional: pagejump, toggleon, toggleoff, sheetopen, sheetclose,
-  # favorite, warning, boundary, each using the same extensions.
-/roms/Game.nds
-/roms/Game.launch.adpcm   # optional override
-/roms/Game.launch.pcm16   # fallback format
-```
+## Responsibilities
 
-## Source audit and integration
+- `arm9/source/sfx/SfxClass.h`: fixed semantic roles, standard filename stems, fallback roles, volume, channel policy, and cooldowns.
+- `SfxAssets.h/.cpp`: source roots, safe folder names, supported file inspection, and per-role layer loading. The stock layer first tries `/sfx/Default/`, then embedded stock.
+- `SfxPackRepository.h/.cpp`: bounded discovery and sorting of immediate bank directories under `/sfx/`. The directory defines the option; valid audio files do not define whether a card is listed.
+- `StockSfx.cpp`: compiled stock clips, independent of SD assets.
+- `SfxService.h/.cpp`: UI clip loading, semantic fallback resolution, prioritized requests, bounded channel playback, launch sequencing, stop and acknowledgement ownership.
+- `LidSfxService.h/.cpp`, ARM7 lid support, and `common/lidSfxConfig.h`: separate sleep/wake cue lifecycle.
+- `settings/SfxMenuState.h/.cpp`: saved versus proposed settings and checked-save state transitions.
+- `settings/SfxSettingsProcess.h/.cpp`: scan/artwork/save task ownership, safe return flow, screen resources, and preview publication.
+- `settings/views/SfxSettingsView.h/.cpp`: theme-style bank cards and selection actions.
+- `settings/SfxBankArtwork.h/.cpp`: built-in package/speaker art, optional BMP loading, and the final patch's built-in muted-speaker art.
+- Existing application, browser, dialog, settings, loader/process, and ARM7 sound integrations dispatch events and manage transitions.
 
-- [ ] Verify build configuration and establish an untouched hardware-tested build.
-- [ ] Inspect BgmService, AudioStreamPlayer, sound IPC definitions, and ARM7 command processing.
-- [ ] Validate proposed ARM9-only implementation, channels 2-5, and 256 KiB arena budget.
-- [ ] Define IPC acknowledgement, command reuse, cache maintenance, and sample lifetime rules.
-- [ ] Wire startup/theme reload in App, with safe stop on sleep and theme changes.
-- [ ] Select one navigation hook in FocusManager or romBrowser; avoid duplicate sounds.
-- [ ] Add Confirm, Back, Launch, PageJump, Favorite, toggles, and warning hooks.
-- [ ] Add dialog/sheet lifecycle hooks in DialogPresenter where appropriate.
-- [ ] Inspect App and PicoLoaderProcess for bounded/skippable launch playback and safe handoff.
+## Playback and ownership rules
 
-## Loading and fallback
+UI hooks request semantic events rather than opening files or allocating sample buffers. Loading occurs outside those hooks. Among ordinary UI requests, more specific events beat incidental navigation within a frame; launch follows a dedicated exclusive path.
 
-- [ ] Missing SFX folders remain silent without breaking existing themes.
-- [ ] Define invalid, empty, truncated, and oversized asset handling.
-- [ ] Try valid ADPCM first, then PCM16; define semantic fallback policies.
-- [ ] Preload theme clips with validated alignment, padding, and cache flushing.
-- [ ] Load only the selected game's launch override on demand.
-- [ ] Preserve the theme launch fallback if override loading fails.
-- [ ] Do not free or overwrite samples while hardware can still read them.
+The inspected UI service uses channels 2-5 and a 256 KiB SD-sample arena. Lid cues have a separate 48 KiB sample budget. These are implementation budgets, not an allowance to load every maximum-size file. Layers are loaded in priority order; capacity/allocation/read failures can cause a lower layer or silence to be used.
 
-## Conversion
+Commands and samples published for ARM7 remain immutable while hardware may use them. Stop acknowledgement precedes freeing sample ownership. The existing timeout/quarantine behavior deliberately retains uncertain buffers rather than freeing memory still potentially read by hardware. Join IO work before destruction or transition. Do not bypass these rules to simplify a menu change.
 
-Prepare a first PCM16 asset with FFmpeg:
+The final selector patch does not change playback, the Default resolver, settings serialization, or the existing renderer fix. It reuses the checked-save/application flow. Failed saves do not publish the proposed settings as successful.
 
-```sh
-ffmpeg -i input.wav -ac 1 -ar 22050 -f s16le -c:a pcm_s16le move.pcm16
-```
+## Scope exclusions
 
-The Python converter is an explicit non-working stub. Validate a DS-compatible encoder before enabling ADPCM assets. Keep source audio and licensing information separate from runtime files; do not commit third-party copyrighted test clips.
+The old plan included per-game `.launch.*` ROM sidecars. This documentation does not advertise those as implemented. The supported contract here is semantic launcher SFX, selected banks, theme overrides, customizable Default assets, embedded fallback, and sleep/wake cues. Background music is separate from this SFX option.
 
-## Execution checkpoints
+Do not assume an older converter scaffold produces valid DS ADPCM. Raw PCM16 can be prepared with the FFmpeg command in the bank guide. Use a verified DS-compatible encoder for ADPCM.
 
-1. Baseline: build unmodified sources and verify boot on DS hardware.
-2. Move proof of concept: service, theme loading, lifecycle handling, and one hook.
-3. UI coverage: remaining semantic sound hooks and volume/cooldown tuning.
-4. Launch overrides: ROM sidecars, theme fallback, skip/duration behavior, clean handoff.
-5. Validate both audio formats and finish asset/deployment documentation.
+## Build and release checklist
 
-## Hardware test checklist
+1. Apply the intended source patches and review the source diff. Preserve the working renderer and audio-ownership fixes.
+2. Build in the configured UCRT64/devkit environment with `make -j4`; retain the complete log and confirm a zero exit status.
+3. Verify boot, ordinary navigation, rapid input, action priorities, and BGM coexistence on hardware.
+4. Verify Default, a partial named bank, missing folders, invalid files, preferred-format failure, and memory-budget exhaustion behavior.
+5. Verify SFX off, retained bank preference, re-enabling through Default/named selection, and persistence after restart.
+6. Verify Back during scan, artwork IO, and save; save failures/recovery; and safe process return.
+7. Verify sleep/wake, theme changes, launch playback, and clean game handoff without stale sample access.
+8. Verify the final title, crossed-out icon, touch/D-pad navigation, row recycling, and malformed artwork on the DS screens.
+9. Commit only distributable assets with provenance/license information. Do not publish third-party test sounds without permission.
 
-- [ ] No SFX folder: normal launcher behavior.
-- [ ] Move sound over BGM without interference.
-- [ ] Rapid navigation without static, crashes, or duplicate triggers.
-- [ ] Sleep/wake without stuck audio or invalid sample access.
-- [ ] Theme changes with and without SFX.
-- [ ] Missing, invalid, and oversized clips handled safely.
-- [ ] Game-specific launch clip and theme fallback both work.
-- [ ] Launch audio can finish or be skipped within a defined maximum duration.
-- [ ] All launcher audio stops before ROM handoff.
-- [ ] Repeat tests with PCM16 and verified DS ADPCM.
+Host validation does not replace any of these hardware checks.
