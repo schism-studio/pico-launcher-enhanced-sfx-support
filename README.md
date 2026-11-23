@@ -1,4 +1,80 @@
-# Pico Launcher Enhanced
+# Pico Launcher Enhanced - SFX Support
+
+This is schism-studio's SFX-focused fork of [Pico Launcher Enhanced](https://github.com/rasalopa/pico-launcher-enhanced), built on Pico Launcher by the LNH team. The `feature/theme-sfx` branch adds semantic launcher sound effects, selectable sound banks, theme overrides, customizable stock sounds, and sleep/wake cues while retaining the Enhanced launcher features documented below.
+
+## SFX support in this branch
+
+- Theme-style sound-bank selector with a separate `SFX off` option and crossed-out speaker icon.
+- `Default` uses the active theme first, then the editable stock bank and embedded fallback. Its description is `Theme, then stock`.
+- Named banks override matching theme sounds without requiring a complete replacement sound set.
+- Selecting Off disables SFX while retaining the saved bank. Selecting Default or a named bank enables SFX and applies that choice through the checked-save/return flow.
+- Highlighting a card previews its artwork; it does not save the choice. The top screen is headed `SFX Options`.
+- Standard role filenames cover navigation, confirmation, back, launch, page changes, toggles, sheets, favorites, warnings, boundaries, and sleep/wake cues.
+- Optional bank BMPs customize the top package preview. Built-in artwork handles missing or invalid images.
+- Background music remains separate from the SFX setting.
+
+Source availability is not release certification. This README does not claim that a tagged downloadable binary includes these changes or that the latest merged source has passed a full target build and DS hardware test. Use a build from this branch and verify it on your console. The inherited release badges, screenshots, and release-installation instructions below are not evidence of an SFX-enabled release.
+
+### SD layout and bank discovery
+
+Paths are relative to the SD card root:
+
+```text
+/sfx/
+  Default/                       # editable stock layer and bank template
+    move.pcm16
+    confirm.pcm16
+    back.pcm16
+    icon.bmp                     # optional
+    preview.bmp                  # optional
+  MyBank/                        # immediate folder name becomes a menu option
+    move.adpcm
+    confirm.pcm16
+/_pico/themes/MyTheme/sfx/        # theme-specific sounds
+  move.pcm16
+```
+
+No bank manifest is required. Safe immediate directories under `/sfx/` define named-bank options; a directory can be empty or partial and still appear. Validity of its audio is checked separately when loading. Default appears once as a built-in option, and Off is a virtual control, not an asset directory. Arbitrary audio filenames do not create new event types.
+
+The editable `/sfx/Default/` folder is intended to be customizable and reusable as a template. To make a bank, copy it to `/sfx/MyBank/`, replace the standard role files you want, reopen the sound menu, and select MyBank. If a repository copy is maintained at `sfx/Default/`, it must still be copied to the SD card; this README does not assert that the assets are included or deployed.
+
+### Which sound wins?
+
+Resolution is independent for every sound role:
+
+```text
+Default selected:
+  active theme -> /sfx/Default -> embedded stock -> semantic fallback -> silence
+
+Named bank selected:
+  selected bank -> active theme -> /sfx/Default -> embedded stock -> semantic fallback -> silence
+
+SFX off selected:
+  no SFX playback
+```
+
+Within each filesystem layer, valid `.adpcm` is preferred over `.pcm16`. Missing or rejected clips can fall through to lower layers. A partial bank therefore overrides only the sounds it supplies. Default does not force stock sounds over a theme; use a named bank for that priority.
+
+### Asset standards and setup
+
+Use mono 22050 Hz raw signed little-endian PCM16 (`.pcm16`, not a WAV container), or verified DS-compatible raw ADPCM (`.adpcm`). Ordinary clips must fit approximately 2 seconds; sleep/wake clips approximately 0.4 seconds. File validation, padding, and total memory budgets also apply.
+
+The standard stems are `move`, `confirm`, `back`, `launch`, `pagejump`, `toggleon`, `toggleoff`, `sheetopen`, `sheetclose`, `favorite`, `warning`, `boundary`, `sleep`, and `wake`.
+
+Optional `icon.bmp` is 32x32, 4-bit indexed; optional `preview.bmp` is 128x128, uncompressed 24-bit or 32-bit. See the full guide for limits and transparency behavior. The BMPs customize the top preview; list-row speaker icons are built in.
+
+For an SFX build, use the source-building instructions below, then deploy `LAUNCHER.nds` as `_picoboot.nds` where appropriate and copy any desired bank assets to SD `/sfx/`. Commit and distribute only sounds/artwork you have permission to share. Merely pushing source does not deploy SD files or create a binary release.
+
+- [Sound banks and filesystem reference](docs/SoundBanks.md): discovery rules, selection, all filenames, fallback order, PCM conversion, BMP standards, and troubleshooting.
+- [SFX implementation and validation](docs/sfx-implementation.md): component map, task/audio ownership, budgets, and build/hardware checklist.
+
+Per-game `.launch.*` ROM sidecars from the earlier planning documents are not advertised as an implemented feature of this system.
+
+---
+
+## Pico Launcher Enhanced foundation
+
+The original Enhanced overview, features, instructions, and contributor credits are preserved below.
 
 [![Latest release](https://img.shields.io/github/v/release/rasalopa/pico-launcher-enhanced?display_name=tag&sort=semver&label=release)](../../releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/rasalopa/pico-launcher-enhanced/total?label=downloads)](../../releases)
@@ -8,7 +84,7 @@ A feature fork of [Pico Launcher](https://github.com/LNH-team/pico-launcher) by 
 
 ![The statistics panel: the folder's game count, totals, the most launched games and the last one played](docs/images/enhanced/Statistics.png)
 ![The menu, with Mario Kart DS and its star, heart and check on the top screen: recently played, favorites, statistics, delete game, a new save for that game and the two filters](docs/images/enhanced/Menu.png)
-![The about sheet: Pico Launcher by the LNH team, Enhanced by rasalopa, where the build came from, and a cheat sheet of the controls](docs/images/enhanced/About.png)
+![The about sheet: Pico Launcher by the LNH team, Enhanced by rasalopa, where the build came from, and a cheat sheet of the controls that have no button](docs/images/enhanced/About.png)
 
 *Taken on the console with the launcher's own screenshot key (hold START).*
 
