@@ -31,6 +31,7 @@
 #include "themes/ITheme.h"
 #include "animation/Animator.h"
 #include "Screenshot.h"
+#include "sfx/SfxService.h"
 #include "gui/views/ToastView.h"
 #include "gui/views/Label2DView.h"
 
@@ -71,7 +72,7 @@ private:
     // empty-folder probe (issue #6), and 2048 turned out to be tight enough
     // for that recursion to plausibly overrun it on real hardware - see
     // SdFolderFactory.cpp's own stack-usage comments for the accounting.
-    u32 _ioTaskThreadStack[4096 / 4];
+    u32 _ioTaskThreadStack[8192 / 4];
     TaskQueue<32, sizeof(TaskBase) + 32> _bgTaskQueue;
     u32 _bgTaskThreadStack[2048 / 4];
 
@@ -105,6 +106,12 @@ private:
 
     IAppSettingsService& _appSettingsService;
     IBgmService& _bgmService;
+    SfxService _sfxService;
+    bool _sfxNav = false;
+    bool _sfxPage = false;
+    bool _sfxDpad = false;
+    bool _sfxFocusChanged = false;
+    int _sfxIndexBefore = -1;
     volatile bool _exit = false;
 
     PadInputSource _keyInputSource;

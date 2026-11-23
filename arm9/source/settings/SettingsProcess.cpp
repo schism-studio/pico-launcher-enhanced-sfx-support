@@ -66,6 +66,13 @@ void SettingsProcess::Run()
     _themeListTopView->InitVram(_subVramContext);
 
     _ioTaskQueue.StartThread(1, _ioTaskThreadStack, sizeof(_ioTaskThreadStack));
+    strlcpy(_sfxTheme, _appSettingsService.GetAppSettings().theme.GetString(), sizeof(_sfxTheme));
+    strlcpy(_sfxPack, _appSettingsService.GetAppSettings().sfxPack.GetString(), sizeof(_sfxPack));
+    _sfxEnabled = _appSettingsService.GetAppSettings().sfxEnabled;
+    _ioTaskQueue.Enqueue([this] (const vu8& cancelRequested) {
+        _sfxService.LoadTheme(_sfxTheme, _sfxPack, _sfxEnabled);
+        return TaskResult<void>::Completed();
+    });
 
     const auto& materialColorScheme = _theme->GetMaterialColorScheme();
 
@@ -117,6 +124,7 @@ void SettingsProcess::Run()
     // Let the IO thread finish its tasks while the controller they use is still
     // alive; the members are destroyed controller first, queue last.
     _ioTaskQueue.StopThread();
+    _sfxService.Stop();
 }
 
 void SettingsProcess::Exit()
@@ -208,6 +216,14 @@ void SettingsProcess::MainLoop()
 
 void SettingsProcess::Update()
 {
+    _sfxService.Tick();
+    const auto sfxOldFocus = _focusManager.GetCurrentFocus();
+    const int sfxOldIndex = _themeListBottomView->GetSelectedIndex();
+    const bool sfxDpad = _inputRepeater.Triggered(InputKey::DpadUp | InputKey::DpadDown |
+        InputKey::DpadLeft | InputKey::DpadRight);
+    const bool sfxPage = _inputRepeater.Triggered(InputKey::L | InputKey::R);
+    const bool sfxNavigation = !_exit && (sfxDpad || sfxPage ||
+        _inputRepeater.Current(InputKey::Touch) || _inputRepeater.Released(InputKey::Touch));
     if (!_exit)
     {
         HandleInput();
@@ -227,6 +243,13 @@ void SettingsProcess::Update()
 
     _themeListBottomView->Update();
     _themeListTopView->Update();
+    if (sfxNavigation) {
+        bool changed = sfxOldFocus.GetPointer() != _focusManager.GetCurrentFocus().GetPointer() ||
+            sfxOldIndex != _themeListBottomView->GetSelectedIndex();
+        if (changed) _sfxService.Play(sfxPage ? SfxClass::PageJump : SfxClass::Move);
+        else if (sfxDpad) _sfxService.Play(SfxClass::Boundary);
+    }
+    _sfxService.Flush();
 }
 
 void SettingsProcess::HandleInput()
@@ -278,7 +301,7 @@ void SettingsProcess::SyncDeleteSheet()
             {
                 auto viewModel = SharedPtr<ThemeDeleteConfirmViewModel>::MakeShared(_settingsController.get());
                 _dialogPresenter.ShowDialog(DeleteConfirmBottomSheetView::CreateShared(
-                    std::move(viewModel), &_theme->GetMaterialColorScheme(), _theme->GetFontRepository()));
+                    std::move(viewModel), &_theme->GetMaterialColorScheme(), _theme->GetFontRepository()), SfxClass::Warning);
                 _deleteSheetShown = true;
             }
             break;

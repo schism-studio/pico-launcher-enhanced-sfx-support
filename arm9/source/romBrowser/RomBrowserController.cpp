@@ -3,6 +3,7 @@
 #include "picoLoaderBootstrap.h"
 #include "PicoLoaderProcess.h"
 #include "settings/SettingsProcess.h"
+#include "settings/SfxSettingsProcess.h"
 #include "FileType/ExtensionFileTypeProvider.h"
 #include "FileType/FileType.h"
 #include "FileType/Nds/NdsRomHeader.h"
@@ -21,6 +22,7 @@
 #include "SaveFileName.h"
 #include "SaveSlotIndex.h"
 #include "RomBrowserController.h"
+#include "sfx/SfxService.h"
 
 RomBrowserController::RomBrowserController(
     IAppSettingsService* appSettingsService, IGameDataService* gameDataService,
@@ -40,6 +42,8 @@ RomBrowserController::RomBrowserController(
 
 void RomBrowserController::NavigateToPath(const TCHAR* name)
 {
+    _navigationSound = _stateMachine.GetCurrentState() == RomBrowserState::Start || !strcmp(name, ".")
+        ? SfxClass::None : (!strcmp(name, "..") ? SfxClass::Back : SfxClass::Confirm);
     StringUtil::Copy(_navigatePath, name, sizeof(_navigatePath) / sizeof(_navigatePath[0]));
     _stateMachine.Fire(RomBrowserStateTrigger::Navigate);
 }
@@ -147,8 +151,10 @@ u32 RomBrowserController::GetGameLanguageMaskOfSelected() const
 void RomBrowserController::SetGameLanguageOfSelected(PicoLoaderGameLanguage gameLanguage)
 {
     const char* gameCode = FindGameCode(_romBrowserViewModel->GetSelectedItem());
-    if (_gameDataService->SetGameLanguage(GetSelectedGame()->GetFileName(), gameLanguage, gameCode))
+    if (_gameDataService->SetGameLanguage(GetSelectedGame()->GetFileName(), gameLanguage, gameCode)) {
+        SfxService::Request(SfxClass::Confirm);
         _gameDataService->SaveAsync(_ioTaskQueue);
+    }
 }
 
 const FileInfo* RomBrowserController::GetSelectedGame() const
@@ -246,7 +252,11 @@ void RomBrowserController::ToggleFavorite(const FileInfo& fileInfo, const char* 
     TCHAR fullPath[256];
     BuildCurrentFolderFilePath(fileInfo.GetFileName(), fullPath,
         sizeof(fullPath) / sizeof(fullPath[0]));
+    const auto* beforeEntry = _gameDataService->GetEntry(fileInfo.GetFileName());
+    bool before = beforeEntry && beforeEntry->favorite;
     _gameDataService->ToggleFavorite(fileInfo.GetFileName(), gameCode, fullPath);
+    const auto* afterEntry = _gameDataService->GetEntry(fileInfo.GetFileName());
+    if (before != (afterEntry && afterEntry->favorite)) SfxService::Request(SfxClass::Favorite);
     _gameDataService->SaveAsync(_ioTaskQueue);
     if (_favoritesFilter)
     {
@@ -260,7 +270,12 @@ void RomBrowserController::ToggleCompleted(const FileInfo& fileInfo, const char*
     TCHAR fullPath[256];
     BuildCurrentFolderFilePath(fileInfo.GetFileName(), fullPath,
         sizeof(fullPath) / sizeof(fullPath[0]));
+    const auto* beforeEntry = _gameDataService->GetEntry(fileInfo.GetFileName());
+    bool before = beforeEntry && beforeEntry->completed;
     _gameDataService->ToggleCompleted(fileInfo.GetFileName(), gameCode, fullPath);
+    const auto* afterEntry = _gameDataService->GetEntry(fileInfo.GetFileName());
+    bool after = afterEntry && afterEntry->completed;
+    if (before != after) SfxService::Request(after ? SfxClass::ToggleOn : SfxClass::ToggleOff);
     _gameDataService->SaveAsync(_ioTaskQueue);
     if (_completedFilter)
     {
@@ -272,12 +287,14 @@ void RomBrowserController::ToggleCompleted(const FileInfo& fileInfo, const char*
 void RomBrowserController::ToggleFavoritesFilter()
 {
     _favoritesFilter = !_favoritesFilter;
+    SfxService::Request(_favoritesFilter ? SfxClass::ToggleOn : SfxClass::ToggleOff);
     _stateMachine.Fire(RomBrowserStateTrigger::ChangeDisplayMode);
 }
 
 void RomBrowserController::ToggleCompletedFilter()
 {
     _completedFilter = !_completedFilter;
+    SfxService::Request(_completedFilter ? SfxClass::ToggleOn : SfxClass::ToggleOff);
     _stateMachine.Fire(RomBrowserStateTrigger::ChangeDisplayMode);
 }
 
@@ -409,9 +426,11 @@ void RomBrowserController::CancelDelete()
 
 void RomBrowserController::ConfirmDelete()
 {
+    SfxService::Request(SfxClass::Confirm);
     _ioTaskQueue->Enqueue([this] (const vu8& cancelRequested)
     {
         FRESULT result = f_unlink(_deleteRomFileName);
+        _deleteFailed = result != FR_OK;
         if (result != FR_OK)
         {
             LOG_ERROR("Couldn't delete file (%d)\n", result);
@@ -500,14 +519,26 @@ void RomBrowserController::HideDisplaySettings()
     _stateMachine.Fire(RomBrowserStateTrigger::HideDisplaySettings);
 }
 
+void RomBrowserController::GotoSoundSettings()
+{
+    SfxService::Request(SfxClass::Confirm);
+    gProcessManager.Goto<SfxSettingsProcess>();
+}
+
 void RomBrowserController::GotoSettingsScreen()
 {
+    SfxService::Request(SfxClass::Confirm);
     _stateMachine.Fire(RomBrowserStateTrigger::GotoSettingsScreen);
 }
 
 void RomBrowserController::SetRomBrowserDisplaySettings(
     const RomBrowserDisplaySettings& romBrowserDisplaySettings)
 {
+    const auto& old = _appSettingsService->GetAppSettings().romBrowserDisplaySettings;
+    if (old.hideEmptyFolders != romBrowserDisplaySettings.hideEmptyFolders)
+        SfxService::Request(romBrowserDisplaySettings.hideEmptyFolders ? SfxClass::ToggleOn : SfxClass::ToggleOff);
+    else if (old.layout != romBrowserDisplaySettings.layout || old.sortMode != romBrowserDisplaySettings.sortMode)
+        SfxService::Request(SfxClass::Confirm);
     _appSettingsService->GetAppSettings().romBrowserDisplaySettings = romBrowserDisplaySettings;
     _saveSettingsPending = true;
     _stateMachine.Fire(RomBrowserStateTrigger::ChangeDisplayMode);
@@ -520,6 +551,7 @@ void RomBrowserController::SetBacklightLevel(int level)
     auto& appSettings = _appSettingsService->GetAppSettings();
     if (appSettings.backlightLevel != level)
     {
+        SfxService::Request(SfxClass::Confirm);
         appSettings.backlightLevel = (s8)level;
         _saveSettingsPending = true;
     }
@@ -537,6 +569,7 @@ void RomBrowserController::Update()
     if (_deleteCompleted)
     {
         _deleteCompleted = false;
+        if (_deleteFailed) SfxService::Request(SfxClass::Warning);
         // the deleted game's favorite/stats entry goes with it
         _gameDataService->RemoveEntry(_deleteRomFileName);
         _gameDataService->SaveAsync(_ioTaskQueue);
@@ -668,6 +701,7 @@ void RomBrowserController::HandleTrigger()
 void RomBrowserController::HandleNavigateTrigger()
 {
     LOG_DEBUG("RomBrowserStateTrigger::Navigate\n");
+    _navigationSucceeded = true;
     _navigateTask = _ioTaskQueue->Enqueue([this] (const vu8& cancelRequested)
     {
         if (!_coverRepository)
@@ -723,6 +757,7 @@ void RomBrowserController::HandleNavigateTrigger()
             FILINFO fileInfo;
             if (f_stat(_navigatePath, &fileInfo) != FR_OK)
             {
+                _navigationSucceeded = false;
                 StringUtil::Copy(_navigatePath, "/", sizeof(_navigatePath) / sizeof(_navigatePath[0]));
             }
             else if (!(fileInfo.fattrib & AM_DIR))
@@ -731,7 +766,15 @@ void RomBrowserController::HandleNavigateTrigger()
                 _navigateFileName[-1] = 0;
             }
         }
-        f_chdir(_navigatePath);
+        TCHAR sfxPreviousPath[256];
+        const bool sfxHadPath = f_getcwd(sfxPreviousPath, sizeof(sfxPreviousPath)) == FR_OK;
+        const bool changedDirectory = f_chdir(_navigatePath) == FR_OK;
+        if (changedDirectory && sfxHadPath && _navigationSound == SfxClass::Back) {
+            TCHAR sfxCurrentPath[256];
+            if (f_getcwd(sfxCurrentPath, sizeof(sfxCurrentPath)) == FR_OK &&
+                !strcmp(sfxPreviousPath, sfxCurrentPath)) _navigationSound = SfxClass::Boundary;
+        }
+        _navigationSucceeded = _navigationSucceeded && changedDirectory;
         SdFolderFactory sdFolderFactory { &_fileTypeProvider };
         _newSdFolder = sdFolderFactory.CreateFromPath(".");
         if (_newSdFolder)
@@ -826,6 +869,10 @@ void RomBrowserController::HandleFolderLoadDoneTrigger()
     _sdFolder = std::move(_newSdFolder);
     _romBrowserViewModel = SharedPtr<RomBrowserViewModel>::MakeShared(this, _navigateFileName);
     BackfillFavoritePaths();
+    if (_navigationSound != SfxClass::None) {
+        SfxService::Request(_navigationSucceeded ? _navigationSound : SfxClass::Warning);
+        _navigationSound = SfxClass::None;
+    }
 }
 
 // Favorites/completed marks made before path recording existed have no
@@ -888,6 +935,7 @@ bool RomBrowserController::IsDsiOnlyCheckNeeded() const
 
 void RomBrowserController::BeginLaunch()
 {
+    SfxService::Request(SfxClass::Launch);
     bool launchTracking = _appSettingsService->GetAppSettings().launchTracking;
     char lastPlayed[20];
     if (launchTracking)

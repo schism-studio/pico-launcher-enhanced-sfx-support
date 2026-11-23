@@ -5,6 +5,7 @@
 #include "SettingsProcess.h"
 #include "ThemeFolderRules.h"
 #include "SettingsController.h"
+#include "sfx/SfxService.h"
 
 /// The list position the selector reopens on after restarting for a delete.
 /// Survives the process restart, which is why it is static; read once.
@@ -27,6 +28,7 @@ void SettingsController::NavigateUp()
         return;
     }
 
+    SfxService::Request(SfxClass::Back);
     gProcessManager.Goto<App>();
 }
 
@@ -37,6 +39,7 @@ void SettingsController::SelectTheme(const char* themeFolderName)
         return;
     }
 
+    SfxService::Request(SfxClass::Confirm);
     _appSettingsService->GetAppSettings().theme = themeFolderName;
     _ioTaskQueue->Enqueue([this] (const vu8& cancelRequested)
     {
@@ -124,6 +127,7 @@ void SettingsController::ConfirmDeleteTheme()
         return;
     }
 
+    SfxService::Request(SfxClass::Confirm);
     _deleteState = ThemeDeleteState::Deleting;
     _deleteTaskDone = false;
     _deleteStatus = "Deleting...";
@@ -147,6 +151,7 @@ void SettingsController::UpdateDeleteTheme()
     }
     asm volatile("" ::: "memory");
     SetDeleteResultStatus();
+    if (_deleteResult != ThemeDeleteResult::Ok) SfxService::Request(SfxClass::Warning);
     _deleteState = ThemeDeleteState::Finished;
     if (_deleteResult == ThemeDeleteResult::Ok)
     {

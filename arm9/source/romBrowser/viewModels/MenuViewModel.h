@@ -57,6 +57,7 @@ public:
     bool IsCompletedFilterEnabled() const { return _romBrowserController->IsCompletedFilterEnabled(); }
 
     void ShowAbout() { _romBrowserController->ShowAbout(); }
+    void ShowSoundSettings() { _romBrowserController->GotoSoundSettings(); }
 
     void Close() { _romBrowserController->HideMenu(); }
 

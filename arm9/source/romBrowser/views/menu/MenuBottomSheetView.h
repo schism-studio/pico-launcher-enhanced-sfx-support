@@ -66,7 +66,8 @@ public:
     void SetEnabled(bool enabled) { _enabled = enabled; }
 
     /// @brief Changes the text at the end, for an item made with one.
-    void SetStateText(const char* stateText) { _stateLabel->SetText(stateText); }
+    void SetStateText(const char* stateText) { if (_stateLabel) _stateLabel->SetText(stateText); }
+    void SetNameText(const char* name) { _nameLabel->SetText(name); }
 
 private:
     IMenuItemHost* _sheet;
@@ -147,6 +148,7 @@ private:
     const MaterialColorScheme* _materialColorScheme;
     SharedPtr<Label2DView> _titleLabel;
     SharedPtr<IconButton2DView> _aboutButton;
+    SharedPtr<IconButton2DView> _soundButton;
     SharedPtr<MenuItemView> _items[ITEM_COUNT];
     /// @brief Whether New save and Language are in the sheet: when they aren't, their items
     ///        are made but never added, so they are neither drawn nor reached.

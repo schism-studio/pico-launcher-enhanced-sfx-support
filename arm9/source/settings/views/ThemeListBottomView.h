@@ -34,6 +34,8 @@ public:
         _recyclerView->Focus(focusManager);
     }
 
+    int GetSelectedIndex() const { return _viewModel->GetSelectedItem(); }
+
     SharedPtr<SettingsAppBarView> _appBarView;
 private:
     SharedPtr<RecyclerView> _recyclerView;

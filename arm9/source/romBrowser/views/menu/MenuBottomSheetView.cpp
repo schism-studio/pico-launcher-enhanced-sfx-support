@@ -22,6 +22,7 @@
 #include "heartIcon.h"
 #include "checkIcon.h"
 #include "infoIcon.h"
+#include "musicIcon.h"
 #include "MenuBottomSheetView.h"
 
 // Placed from the sheet's top edge, which rests at y 32 once the sheet is open.
@@ -102,7 +103,7 @@ MenuItemView::MenuItemView(IMenuItemHost* sheet, int index, int width, const cha
 {
     int nameWidth = width - _nameX - 4 - (stateText ? _stateWidth : 0);
     // 24 holds a save's name, which is up to 20 characters
-    _nameLabel = Label2DView::CreateShared(nameWidth, 16, 24, fontRepository->GetFont(FontType::Regular10));
+    _nameLabel = Label2DView::CreateShared(nameWidth, 16, 264, fontRepository->GetFont(FontType::Regular10));
     _nameLabel->SetEllipsisStyle(LabelView::EllipsisStyle::Ellipsis);
     _nameLabel->SetText(name);
     AddChildTail(_nameLabel.GetPointer());
@@ -239,6 +240,12 @@ MenuBottomSheetView::MenuBottomSheetView(SharedPtr<MenuViewModel> viewModel,
         ((MenuBottomSheetView*)arg)->_viewModel->ShowAbout();
     }, this);
     AddChildTail(_aboutButton.GetPointer());
+    _soundButton = IconButton2DView::CreateShared(IconButtonView::Type::Standard,
+        IconButtonView::State::NoToggle, md::sys::color::inverseOnSurface, materialColorScheme);
+    _soundButton->SetAction([] (IconButtonView*, void* arg) {
+        ((MenuBottomSheetView*)arg)->_viewModel->ShowSoundSettings();
+    }, this);
+    AddChildTail(_soundButton.GetPointer());
 
     static_assert(std::size(kEntries) == ITEM_COUNT, "one entry per item");
     // the highlighted game can't change while the menu is open
@@ -274,6 +281,7 @@ void MenuBottomSheetView::InitVram(const VramContext& vramContext)
         { recentIconTilesLen, smallHeartIconFilledTilesLen, statsIconTilesLen, trashIconTilesLen, plusIconTilesLen,
           languageIconTilesLen, heartIconTilesLen, checkIconTilesLen };
     _aboutButton->SetIconVramOffset(LoadSprite(*objVramManager, infoIconTiles, infoIconTilesLen));
+    _soundButton->SetIconVramOffset(LoadSprite(*objVramManager, musicIconTiles, musicIconTilesLen));
     u32 selectorVramOffset = LoadSprite(*objVramManager, cheatSelectorTiles, cheatSelectorTilesLen);
     for (int i = 0; i < ITEM_COUNT; i++)
     {
@@ -315,6 +323,7 @@ void MenuBottomSheetView::Update()
     int y = _position.y;
     _titleLabel->SetPosition(TITLE_X, y + TITLE_Y);
     _aboutButton->SetPosition(ABOUT_BUTTON_X, y + ABOUT_BUTTON_Y);
+    _soundButton->SetPosition(172, y + ABOUT_BUTTON_Y);
     for (int i = 0; i < ITEM_COUNT; i++)
     {
         int x = ITEMS_X + kEntries[i].column * CELL_WIDTH;
@@ -354,8 +363,14 @@ SharedPtr<View> MenuBottomSheetView::MoveFocus(const SharedPtr<View>& currentFoc
 {
     if (currentFocus.GetPointer() == _aboutButton.GetPointer())
     {
+        if (direction == FocusMoveDirection::Left) return _soundButton;
         if (direction == FocusMoveDirection::Down)
             return _items[ITEM_FAVORITES];
+        return nullptr;
+    }
+    if (currentFocus.GetPointer() == _soundButton.GetPointer()) {
+        if (direction == FocusMoveDirection::Right) return _aboutButton;
+        if (direction == FocusMoveDirection::Down) return _items[ITEM_RECENTS];
         return nullptr;
     }
     int idx = -1;
@@ -378,7 +393,7 @@ SharedPtr<View> MenuBottomSheetView::MoveFocus(const SharedPtr<View>& currentFoc
             break;
         case FocusMoveDirection::Up:
             if (row == 0)
-                return _aboutButton;
+                return column == 0 ? _soundButton : _aboutButton;
             target = FindEntry(row - 1, column);
             break;
         case FocusMoveDirection::Down:
@@ -391,6 +406,7 @@ SharedPtr<View> MenuBottomSheetView::MoveFocus(const SharedPtr<View>& currentFoc
 void MenuBottomSheetView::SetGraphics(const IconButton2DView::VramToken& iconButtonVramToken)
 {
     _aboutButton->SetGraphics(iconButtonVramToken);
+    _soundButton->SetGraphics(iconButtonVramToken);
 }
 
 void MenuBottomSheetView::Focus(FocusManager& focusManager)

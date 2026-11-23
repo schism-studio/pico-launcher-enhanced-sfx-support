@@ -4,7 +4,13 @@ enum SoundIpcCommand
 {
     SND_IPC_CMD_START_CHANNELS,
     SND_IPC_CMD_STOP_CHANNELS,
-    SND_IPC_CMD_SETUP_CHANNEL
+    SND_IPC_CMD_SETUP_CHANNEL,
+    // Must be the final command in an SFX list.
+    // Upper 24 bits carry a nonzero request ID.
+    // Reply indicates command processing, not clip playback completion.
+    SND_IPC_CMD_ACKNOWLEDGE,
+    // Followed by one pointer word; final command only. Reply uses bit 24.
+    SND_IPC_CMD_LID_SFX_CONFIG
 };
 
 struct snd_ipc_cmd_setup_channel_t

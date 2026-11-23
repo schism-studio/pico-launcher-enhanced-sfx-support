@@ -8,6 +8,7 @@
 #include "gui/materialDesign.h"
 #include "gui/GraphicsContext.h"
 #include "DialogPresenter.h"
+#include "sfx/SfxService.h"
 
 DialogPresenter::DialogPresenter(FocusManager* focusManager, StackVramManager* vramManager)
     : _focusManager(focusManager), _vramManager(vramManager)
@@ -16,11 +17,12 @@ DialogPresenter::DialogPresenter(FocusManager* focusManager, StackVramManager* v
     _baseVramState = _vramManager->GetState();
 }
 
-void DialogPresenter::ShowDialog(SharedPtr<DialogView> dialog)
+void DialogPresenter::ShowDialog(SharedPtr<DialogView> dialog, SfxClass openSound)
 {
     if (!_nextDialog)
     {
         _nextDialog = std::move(dialog);
+        _nextOpenSound = openSound;
     }
 }
 
@@ -41,6 +43,7 @@ void DialogPresenter::Update()
         {
             case State::BottomSheetVisible:
             {
+                SfxService::Request(_currentOpenSound);
                 _scrimAnimator.Goto(5, md::sys::motion::duration::short2,
                     &md::sys::motion::easing::linear);
                 _yAnimator.Goto(32, md::sys::motion::duration::long2,
@@ -51,6 +54,7 @@ void DialogPresenter::Update()
             }
             case State::BottomSheetClosing:
             {
+                SfxService::Request(SfxClass::SheetClose);
                 _scrimAnimator.Goto(0, md::sys::motion::duration::short4,
                     &md::sys::motion::easing::emphasizedAccelerate);
                 _yAnimator.Goto(192, md::sys::motion::duration::short4,
@@ -75,6 +79,7 @@ void DialogPresenter::Update()
             if (!_currentDialog && _nextDialog)
             {
                 _currentDialog = std::move(_nextDialog);
+                _currentOpenSound = _nextOpenSound;
                 _initVram = true;
                 _newState = State::BottomSheetVisible;
             }

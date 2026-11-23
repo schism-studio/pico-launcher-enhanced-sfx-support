@@ -12,6 +12,7 @@
 #include "FileType/ExtensionFileTypeProvider.h"
 #include "services/settings/IAppSettingsService.h"
 #include "cheats/ICheatRepository.h"
+#include "sfx/SfxClass.h"
 
 class RomBrowserController : public IRomBrowserController
 {
@@ -68,6 +69,7 @@ public:
     bool DeleteKeepsSave() const override { return _deleteKeepsSave; }
     u32 GetDeleteExtraSaveCount() const override { return _deleteExtraSaveCount; }
     void GotoSettingsScreen() override;
+    void GotoSoundSettings() override;
 
     void Update() override;
 
@@ -168,6 +170,9 @@ private:
     /// @brief How many slot saves were found, for the dialog's wording only.
     u32 _deleteExtraSaveCount = 0;
     volatile bool _deleteCompleted = false;
+    bool _deleteFailed = false;
+    bool _navigationSucceeded = true;
+    SfxClass _navigationSound = SfxClass::None;
 
     std::unique_ptr<SdFolder> _sdFolder;
     SharedPtr<RomBrowserViewModel> _romBrowserViewModel;

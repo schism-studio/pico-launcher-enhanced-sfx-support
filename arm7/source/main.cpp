@@ -33,6 +33,7 @@
 #include "Arm7State.h"
 #include "mmc/tmio.h"
 #include "touchScreen.h"
+#include "lidSfx7.h"
 
 static NocashOutputStream sNocashOutputStream;
 static PlainLogger sPlainLogger = PlainLogger(LogLevel::All, std::unique_ptr<IOutputStream>(&sNocashOutputStream));
@@ -60,6 +61,8 @@ static volatile u8 sPendingBacklight = 0;
 // entering BIOS sleep. swiSleep() wakes when the lid is opened again.
 static u8 sLidClosedFrames = 0;
 static bool sLidWasClosed = false;
+static bool sLidCuePending = false;
+static u32 sLidCueFrames = 0;
 
 /// @brief Whether this console has the DS Lite's four backlight levels on the
 ///        PMIC. From GBATEK ("DS Power Management Device"): the DS Lite's
@@ -124,6 +127,11 @@ static void checkLidSleep()
     if (!lidClosed)
     {
         sLidClosedFrames = 0;
+        if (sLidCuePending) {
+            sLidCuePending = false;
+            sLidCueFrames = 0;
+            lidSfxCancelSleep(); // Reopened during cue: no stale sleep, no fake wake.
+        }
 
         // If swiSleep() returned because the lid was opened, restore the
         // backlight before the next frame is processed.
@@ -131,6 +139,7 @@ static void checkLidSleep()
         {
             sLidWasClosed = false;
             restoreBacklightAfterSleep();
+            lidSfxWake(); // Exactly once after an actual sleep/open cycle.
         }
 
         return;
@@ -141,6 +150,16 @@ static void checkLidSleep()
 
     if (!sLidWasClosed && sLidClosedFrames >= 4)
     {
+        if (!sLidCuePending) {
+            for (u32 channel = 2; channel <= 5; ++channel) snd_stopChannel(channel);
+            sLidCueFrames = lidSfxBeginSleep();
+            sLidCuePending = true;
+        }
+        if (sLidCueFrames) {
+            --sLidCueFrames;
+            return; // VCount loop stays responsive to rapid reopening.
+        }
+        sLidCuePending = false;
         sLidWasClosed = true;
 
         // Capture the current DS Lite backlight level before BIOS sleep
@@ -161,6 +180,10 @@ static void checkLidSleep()
         pmic_setPowerLedBlink(PMIC_CONTROL_POWER_LED_BLINK_SLOW);
 
         rtos_disableIrqMask(RTOS_IRQ_VCOUNT);
+        // UI one-shots must not remain active across lid sleep; preserve BGM.
+        for (u32 channel = 2; channel <= 5; ++channel)
+            snd_stopChannel(channel);
+        lidSfxStop();
         swiSleep();
         rtos_enableIrqMask(RTOS_IRQ_VCOUNT);
     }

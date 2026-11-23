@@ -3,6 +3,7 @@
 #include "core/SharedPtr.h"
 #include "animation/Animator.h"
 #include "gui/views/DialogView.h"
+#include "sfx/SfxClass.h"
 
 class StackVramManager;
 class FocusManager;
@@ -15,7 +16,7 @@ public:
 
     /// @brief Requests to show the given dialog.
     /// @param dialog The dialog to show.
-    void ShowDialog(SharedPtr<DialogView> dialog);
+    void ShowDialog(SharedPtr<DialogView> dialog, SfxClass openSound = SfxClass::SheetOpen);
 
     /// @brief Closes the current dialog.
     void CloseDialog();
@@ -96,6 +97,8 @@ private:
     SharedPtr<DialogView> _currentDialog;
     SharedPtr<DialogView> _nextDialog;
     bool _initVram = false;
+    SfxClass _nextOpenSound = SfxClass::SheetOpen;
+    SfxClass _currentOpenSound = SfxClass::SheetOpen;
     SharedPtr<View> _oldFocus = nullptr;
     Animator<int> _scrimAnimator;
     Animator<int> _yAnimator;

@@ -281,6 +281,8 @@ void App::Run()
 
     _ioTaskQueue.Enqueue([this] (const vu8& cancelRequested)
     {
+        const auto& settings = _appSettingsService.GetAppSettings();
+        _sfxService.LoadTheme(settings.theme.GetString(), settings.sfxPack.GetString(), settings.sfxEnabled);
         _bgmService.StartBgmFromConfig();
         return TaskResult<void>::Completed();
     });
@@ -291,7 +293,10 @@ void App::Run()
     // ~App frees the controller before the views, so nothing may still run on io
     _ioTaskQueue.WaitForQueued();
 
+    // The IO queue is joined above; launch cannot race theme loading or loader setup.
     _bgmService.StopBgm();
+    _sfxService.PlayLaunchAndWait();
+    _sfxService.Stop();
     rtos_disableIrqMask(RTOS_IRQ_VCOUNT);
     rtos_setIrqFunc(RTOS_IRQ_VCOUNT, nullptr);
 }
@@ -374,6 +379,7 @@ void App::HandleTrigger(RomBrowserStateTrigger trigger, RomBrowserState newState
         }
         case RomBrowserStateTrigger::LaunchRefused:
         {
+            _sfxService.Play(SfxClass::Warning);
             // the browser is back where it was, so say why the game did not start
             if (_toast)
                 _toast->Show(_romBrowserController.GetLaunchRefusedText());
@@ -581,7 +587,7 @@ void App::HandleShowDeleteConfirmTrigger()
     auto deleteConfirmViewModel = SharedPtr<DeleteConfirmViewModel>::MakeShared(&_romBrowserController);
     auto deleteConfirmDialog = DeleteConfirmBottomSheetView::CreateShared(
         std::move(deleteConfirmViewModel), &_theme->GetMaterialColorScheme(), _theme->GetFontRepository());
-    _dialogPresenter.ShowDialog(std::move(deleteConfirmDialog));
+    _dialogPresenter.ShowDialog(std::move(deleteConfirmDialog), SfxClass::Warning);
 }
 
 void App::HandleHideDeleteConfirmTrigger()
@@ -733,6 +739,8 @@ void App::HandleChangeDisplayModeTrigger(RomBrowserState newState)
 
 void App::Update()
 {
+    _sfxService.Tick();
+    _sfxNav = false;
     // Copying the captured frame out of vram is far too long for vblank, so it
     // happens here, in the visible period.
     _screenshot.Update();
@@ -812,12 +820,21 @@ void App::Update()
     _dialogPresenter.Update();
 
     _romBrowserBottomScreenView->Update();
+    if (_sfxNav) {
+        const auto vm = _romBrowserController.GetRomBrowserViewModel();
+        const bool selectionChanged = vm.IsValid() && vm->GetSelectedItem() != _sfxIndexBefore;
+        if (_sfxFocusChanged || selectionChanged)
+            _sfxService.Play(_sfxPage ? SfxClass::PageJump : SfxClass::Move);
+        else if (_sfxDpad)
+            _sfxService.Play(SfxClass::Boundary);
+    }
     if (isRomBrowserVisible)
     {
         _romBrowserTopScreenView->Update();
         _romBrowserController.GetRomBrowserViewModel()->SetIconFrameCounter(
             _romBrowserController.GetRomBrowserViewModel()->GetIconFrameCounter() + 1);
     }
+    _sfxService.Flush();
 }
 
 void App::Draw()
@@ -981,6 +998,7 @@ void App::RestoreVramState(const VramState& vramState)
 
 void App::HandleInput()
 {
+    const auto sfxOldFocus = _focusManager.GetCurrentFocus();
     // Hold START to save both screens. One key rather than one per screen, and
     // not SELECT: the dsi changes its brightness with SELECT and the volume
     // buttons, and those are not readable in ds mode, so a player adjusting
@@ -1037,6 +1055,13 @@ void App::HandleInput()
     }
     else
     {
+        _sfxDpad = _inputRepeater.Triggered(InputKey::DpadUp | InputKey::DpadDown |
+            InputKey::DpadLeft | InputKey::DpadRight);
+        _sfxPage = _inputRepeater.Triggered(InputKey::L | InputKey::R);
+        _sfxNav = _sfxDpad || _sfxPage || _inputRepeater.Current(InputKey::Touch) ||
+            _inputRepeater.Released(InputKey::Touch);
+        const auto vm = _romBrowserController.GetRomBrowserViewModel();
+        _sfxIndexBefore = vm.IsValid() ? vm->GetSelectedItem() : -1;
         _focusManager.Update(_inputRepeater);
     }
     Point touchPoint;
@@ -1080,4 +1105,5 @@ void App::HandleInput()
         }
         _lastTouchPoint = touchPoint;
     }
+    _sfxFocusChanged = sfxOldFocus.GetPointer() != _focusManager.GetCurrentFocus().GetPointer();
 }

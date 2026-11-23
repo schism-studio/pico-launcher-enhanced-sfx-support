@@ -92,6 +92,7 @@ public:
     ///        confirmation is shown.
     virtual u32 GetDeleteExtraSaveCount() const = 0;
     virtual void GotoSettingsScreen() = 0;
+    virtual void GotoSoundSettings() = 0;
 
     virtual void Update() = 0;
 

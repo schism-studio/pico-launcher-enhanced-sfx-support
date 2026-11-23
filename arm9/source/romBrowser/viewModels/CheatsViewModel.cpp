@@ -2,6 +2,7 @@
 #include "cheats/ICheatRepository.h"
 #include "fat/File.h"
 #include "CheatsViewModel.h"
+#include "sfx/SfxService.h"
 
 CheatsViewModel::CheatsViewModel(const FileInfo& romFileInfo, IRomBrowserController* romBrowserController)
     : _romFileInfo(romFileInfo), _romBrowserController(romBrowserController)
@@ -50,6 +51,7 @@ void CheatsViewModel::ActivateItem(int index)
         {
             _categoryStack[++_categoryStackLevel] = { &entry, (u32)index };
             _selectedItem = 0;
+            SfxService::Request(SfxClass::Confirm);
         }
     }
     else
@@ -67,6 +69,7 @@ void CheatsViewModel::ActivateItem(int index)
             }
         }
         entry.SetIsCheatActive(isEnabled);
+        SfxService::Request(isEnabled ? SfxClass::ToggleOn : SfxClass::ToggleOff);
         _changed = true;
     }
 }
@@ -80,6 +83,7 @@ bool CheatsViewModel::NavigateUp()
     }
     else
     {
+        SfxService::Request(SfxClass::Back);
         _selectedItem = _categoryStack[_categoryStackLevel].index;
         _categoryStack[_categoryStackLevel--] = { nullptr, 0 };
         return true;
@@ -128,6 +132,7 @@ void CheatsViewModel::DisableAllCheats(const CheatEntry* cheatCategory)
             if (entry.GetIsCheatActive())
             {
                 entry.SetIsCheatActive(false);
+                SfxService::Request(SfxClass::ToggleOff);
                 _changed = true;
             }
         }
